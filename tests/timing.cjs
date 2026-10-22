@@ -21,6 +21,18 @@ const {PaperBag,PhysicsRunner}=load({mobile:true});
  const b=new PaperBag(),steps=[];b.step=dt=>steps.push(dt);b.rebuild=()=>{};
  for(const dt of [1/60,.04,.05,.5]){steps.length=0;b.settle(dt);assert(steps.length<=3,'A delayed update cannot create an unbounded catch-up queue');assert(steps.every(h=>h<=1/60));assert(Math.abs(steps.reduce((a,c)=>a+c,0)-Math.min(.05,dt))<1e-9,'All elapsed time up to the pause bound is simulated');}
 }
+{
+ const {PaperBag}=load({mobile:false}),b=new PaperBag(),steps=[];b.step=dt=>steps.push(dt);b.rebuild=()=>{};let elapsed=0;
+ for(const dt of [1/240,1/60,.04,.05,.5,.003,.021]){
+  steps.length=0;b.settle(dt);elapsed+=Math.min(.05,dt);
+  assert(steps.length<=6,'Desktop catch-up must remain bounded');
+  assert(steps.every(h=>h===1/120),'Dense desktop paper needs a fixed, stable timestep');
+  assert(elapsed-(b.simulatedTime||0)<1/120+1e-9,'Fractional time must be retained instead of slowing the simulation');
+  assert(Math.abs((b.simulatedTime||0)+b.accumulator-elapsed)<1e-9,'Completed steps and remainder must account for elapsed time');
+ }
+ b.sleeping=b.fries.sleeping=true;b.settle(10);assert.equal(b.accumulator,0,'A sleeping scene must discard its fractional backlog');
+ b.restore(b.snapshot());assert.equal(b.accumulator,0,'Undo must start without a previous frame remainder');
+}
 // Exercise the larger substep on the actual constrained paper, including a
 // change from pressing to lifting, a release, and gravity after a cut.
 for(const mobile of [true,false]){

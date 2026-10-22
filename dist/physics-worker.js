@@ -605,13 +605,18 @@
   if(this.control?.pulseTime){this.control.pulseTime-=dt;if(this.control.pulseTime<=0)this.release();}
  }
  settle(dt){
-  if(this.sleeping&&!this.control&&this.fries.sleeping)return false;
-  // Follow elapsed time without queuing a backlog after a pause. At most
-  // three solves cover 50 ms; no individual step exceeds 1/60 second.
+  if(this.sleeping&&!this.control&&this.fries.sleeping){this.accumulator=0;return false;}
+  // The dense desktop mesh needs a fixed 120 Hz solve to stay upright and
+  // reach sleep. Retain fractional time, but never catch up more than 50 ms.
+  // Keep the lighter mobile solver's existing budget of at most three steps.
   const span=clamp(Number.isFinite(dt)?dt:1/60,0,.05);if(!span)return false;
-  const steps=Math.max(2,Math.ceil(span/(1/60))),h=span/steps;
+  let steps=Math.max(2,Math.ceil(span/(1/60))),h=span/steps;
+  if(!MOBILE){
+   h=1/120;this.accumulator+=span;steps=Math.min(6,Math.floor((this.accumulator+1e-12)/h));
+   this.accumulator=Math.max(0,this.accumulator-steps*h);if(!steps)return false;
+  }
   for(let i=0;i<steps;i++){if(this.sleeping&&!this.control){this.prev.set(this.pos);this.fries.step(h,this);}else this.step(h);}
-  this.simulatedTime=(this.simulatedTime||0)+span;this.rebuild();return true;
+  this.simulatedTime=(this.simulatedTime||0)+steps*h;this.rebuild();return true;
  }
  wake(){this.sleeping=false;this.quiet=0;this.motion=true;}
  snapshot(){const s={p:new Float32Array(this.pos),angles:new Float32Array(this.angles),fries:this.fries.snapshot()};if(this.tearingEnabled)s.topology={rest:new Float32Array(this.rest),tri:new Uint16Array(this.tri),uv:new Float32Array(this.uv),wall:new Uint8Array(this.wall),origin:new Uint16Array(this.origin),broken:[...this.broken]};return s;}
