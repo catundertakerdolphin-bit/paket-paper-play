@@ -8,6 +8,6 @@
   },
   "scripts": {
     "build": "node scripts/build-worker.cjs",
-    "test": "node tests/standing.cjs && node tests/controls.cjs && node tests/challenge.cjs && node tests/worker.cjs"
+    "test": "node tests/profile.cjs && node tests/standing.cjs && node tests/controls.cjs && node tests/challenge.cjs && node tests/worker.cjs"
   }
 }

@@ -1,4 +1,4 @@
-"use strict";const MOBILE=true,TEAR_MODE=true,QUALITY={"nx":10,"nz":6,"ny":20,"iterations":16,"contacts":8,"dpr":1.25,"shadow":512,"taps":4};const WIDTH=2,HEIGHT=3.35,DEPTH=1.14,NX=10,NZ=6,NY=20,RING=32,PERIM=6.279999999999999,FLOOR=0.008;const V={add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],mul:(a,s)=>[a[0]*s,a[1]*s,a[2]*s],dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cross:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],len:a=>Math.hypot(a[0],a[1],a[2]),norm:a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l);}};const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),mix=(a,b,t)=>a+(b-a)*t,smooth=(t)=>{t=clamp(t,0,1);return t*t*(3-2*t);},wrapAngle=a=>a>Math.PI?a-Math.PI*2:a< -Math.PI?a+Math.PI*2:a;function seeded(seed){let s=seed>>>0;return ()=>{s+=0x6D2B79F5;let t=s;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}class PaperContact {
+"use strict";const TEAR_MODE=true,QUALITY={"nx":10,"nz":6,"ny":20,"iterations":16,"contacts":8,"dpr":1.25,"shadow":512,"taps":4};const WIDTH=2,HEIGHT=3.35,DEPTH=1.14,NX=10,NZ=6,NY=20,RING=32,PERIM=6.279999999999999,FLOOR=0.008;const V={add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],mul:(a,s)=>[a[0]*s,a[1]*s,a[2]*s],dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cross:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],len:a=>Math.hypot(a[0],a[1],a[2]),norm:a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l);}};const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),mix=(a,b,t)=>a+(b-a)*t,smooth=(t)=>{t=clamp(t,0,1);return t*t*(3-2*t);},wrapAngle=a=>a>Math.PI?a-Math.PI*2:a< -Math.PI?a+Math.PI*2:a;function seeded(seed){let s=seed>>>0;return ()=>{s+=0x6D2B79F5;let t=s;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}class PaperContact {
  constructor(bag){
   this.bag=bag;this.thickness=.008;this.margin=.024;this.vf=[];this.ee=[];this.ccd=0;this.safety=false;this.minTOI=1;this.motionLimit=new Float32Array(bag.count);this.fadeLimit=new Float32Array(bag.count);
   const n=bag.tri.length/3;
@@ -373,7 +373,7 @@
   this.edges=new Float32Array(edges);this.hinges=new Uint16Array(hinges);this.angles=new Float32Array(hinges.length/5);this.elasticAngles=new Float32Array(this.angles.length);this.bendLambda=new Float32Array(this.angles.length);
   this.grad=new Float64Array(12);for(let h=0;h<this.angles.length;h++)this.angles[h]=this.hingeGeometry(h);this.elasticAngles.set(this.angles);
   this.normals=new Float32Array(this.count*3*5);this.flat=new Float32Array(tri.length);this.data=new Float32Array(tri.length*8);
-  this.contacts=new Float32Array(this.count);this.accumulator=0;this.control=null;this.sleeping=false;this.quiet=0;this.motion=true;this.impacts=0;this.soundEnergy=0;this.frame=0;
+  this.contacts=new Float32Array(this.count);this.control=null;this.sleeping=false;this.quiet=0;this.motion=true;this.impacts=0;this.soundEnergy=0;this.frame=0;
   this.initialArea=this.area0.reduce((a,b)=>a+b,0);this.collision=new PaperContact(this);this.rebuild();
   this.tearingEnabled=allowTear;this.tearEnergy=0;this.fries=new Fries();
   if(allowTear)this.initTearing();
@@ -460,9 +460,9 @@
  moveTear(g,index,target){g.anchors[index].target=[...target];this.control=g;this.wake();}
  advanceTear(g,dt=null){
   if(dt!==null){g.cutClock=(g.cutClock||0)+dt;if(g.cutClock<.075)return;}
-  const axis=V.sub(g.anchors[1].current,g.anchors[0].current),extension=Math.min(V.len(axis)-g.startDistance,g.inputOpening??Infinity),opening=Math.max(0,extension-(MOBILE?.07:.11)),budget=opening*6,keys=[];let length=g.cutLength,index=g.index;
+  const axis=V.sub(g.anchors[1].current,g.anchors[0].current),extension=Math.min(V.len(axis)-g.startDistance,g.inputOpening??Infinity),opening=Math.max(0,extension-.07),budget=opening*6,keys=[];let length=g.cutLength,index=g.index;
   while(index<g.plan.order.length&&keys.length<12){const e=g.plan.order[index];if(length+e.length>budget)break;keys.push(e.key);length+=e.length;index++;}
-  if(keys.length<(MOBILE?2:3)&&index<g.plan.order.length)return;
+  if(keys.length<2&&index<g.plan.order.length)return;
   if(keys.length){this.cutEdges(keys,V.norm(axis),g.plan.sides);g.index=index;g.cutLength=length;g.cutClock=0;}
  }
  projectTear(g,dt=1/120){
@@ -605,16 +605,10 @@
   if(this.control?.pulseTime){this.control.pulseTime-=dt;if(this.control.pulseTime<=0)this.release();}
  }
  settle(dt){
-  if(this.sleeping&&!this.control&&this.fries.sleeping){this.accumulator=0;return false;}
-  // The dense desktop mesh needs a fixed 120 Hz solve to stay upright and
-  // reach sleep. Retain fractional time, but never catch up more than 50 ms.
-  // Keep the lighter mobile solver's existing budget of at most three steps.
+  if(this.sleeping&&!this.control&&this.fries.sleeping)return false;
+  // The shared lightweight shell uses the phone's bounded two/three-step solve.
   const span=clamp(Number.isFinite(dt)?dt:1/60,0,.05);if(!span)return false;
-  let steps=Math.max(2,Math.ceil(span/(1/60))),h=span/steps;
-  if(!MOBILE){
-   h=1/120;this.accumulator+=span;steps=Math.min(6,Math.floor((this.accumulator+1e-12)/h));
-   this.accumulator=Math.max(0,this.accumulator-steps*h);if(!steps)return false;
-  }
+  const steps=Math.max(2,Math.ceil(span/(1/60))),h=span/steps;
   for(let i=0;i<steps;i++){if(this.sleeping&&!this.control){this.prev.set(this.pos);this.fries.step(h,this);}else this.step(h);}
   this.simulatedTime=(this.simulatedTime||0)+steps*h;this.rebuild();return true;
  }
@@ -623,7 +617,7 @@
  restore(s){
   if(s.topology){const t=s.topology;this.count=s.p.length/3;this.pos=new Float32Array(s.p);this.prev=new Float32Array(s.p);this.velocity=new Float32Array(s.p.length);this.rest=new Float32Array(t.rest);this.tri=new Uint16Array(t.tri);this.uv=new Float32Array(t.uv);this.wall=new Uint8Array(t.wall);this.origin=new Uint16Array(t.origin);this.broken=new Set(t.broken);this.refreshTopology();}
   else{this.pos.set(s.p);this.prev.set(s.p);this.velocity.fill(0);}
-  this.angles.set(s.angles);if(s.fries)this.fries.restore(s.fries);this.control=null;this.accumulator=0;this.tearEnergy=0;this.wake();this.rebuild();
+  this.angles.set(s.angles);if(s.fries)this.fries.restore(s.fries);this.control=null;this.tearEnergy=0;this.wake();this.rebuild();
  }
  resetShape(){this.restore(this.tearingEnabled?this.pristine:{p:this.rest,angles:this.elasticAngles,fries:this.fries.initial});}
  gesture(hit,snapshot){

@@ -77,8 +77,9 @@ header{align-items:flex-start;gap:16px}.brand{min-width:0}.tools{margin-top:-8px
 "use strict";
 const MOBILE=typeof navigator!=='undefined'&&((navigator.maxTouchPoints||0)>0||/iPhone|iPad|Android/i.test(navigator.userAgent||''))&&(typeof matchMedia!=='function'||matchMedia('(pointer:coarse)').matches||matchMedia('(max-width:1024px)').matches);
 const TEAR_MODE=true;
-const QUALITY=MOBILE?{nx:10,nz:6,ny:20,iterations:16,contacts:8,dpr:1.25,shadow:512,taps:4}:{nx:24,nz:14,ny:40,iterations:24,contacts:16,dpr:1.75,shadow:1536,taps:6};
-const WORKER_FILE='physics-worker.js?v=2791916e7fa6';
+// Share the proven phone budget on every device, including mouse-driven desktops.
+const QUALITY={nx:10,nz:6,ny:20,iterations:16,contacts:8,dpr:1.25,shadow:512,taps:4};
+const WORKER_FILE='physics-worker.js?v=5de3158eb33d';
 const V = {
  add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],
  sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],
@@ -502,7 +503,7 @@ class PaperBag {
   this.edges=new Float32Array(edges);this.hinges=new Uint16Array(hinges);this.angles=new Float32Array(hinges.length/5);this.elasticAngles=new Float32Array(this.angles.length);this.bendLambda=new Float32Array(this.angles.length);
   this.grad=new Float64Array(12);for(let h=0;h<this.angles.length;h++)this.angles[h]=this.hingeGeometry(h);this.elasticAngles.set(this.angles);
   this.normals=new Float32Array(this.count*3*5);this.flat=new Float32Array(tri.length);this.data=new Float32Array(tri.length*8);
-  this.contacts=new Float32Array(this.count);this.accumulator=0;this.control=null;this.sleeping=false;this.quiet=0;this.motion=true;this.impacts=0;this.soundEnergy=0;this.frame=0;
+  this.contacts=new Float32Array(this.count);this.control=null;this.sleeping=false;this.quiet=0;this.motion=true;this.impacts=0;this.soundEnergy=0;this.frame=0;
   this.initialArea=this.area0.reduce((a,b)=>a+b,0);this.collision=new PaperContact(this);this.rebuild();
   this.tearingEnabled=allowTear;this.tearEnergy=0;this.fries=new Fries();
   if(allowTear)this.initTearing();
@@ -589,9 +590,9 @@ class PaperBag {
  moveTear(g,index,target){g.anchors[index].target=[...target];this.control=g;this.wake();}
  advanceTear(g,dt=null){
   if(dt!==null){g.cutClock=(g.cutClock||0)+dt;if(g.cutClock<.075)return;}
-  const axis=V.sub(g.anchors[1].current,g.anchors[0].current),extension=Math.min(V.len(axis)-g.startDistance,g.inputOpening??Infinity),opening=Math.max(0,extension-(MOBILE?.07:.11)),budget=opening*6,keys=[];let length=g.cutLength,index=g.index;
+  const axis=V.sub(g.anchors[1].current,g.anchors[0].current),extension=Math.min(V.len(axis)-g.startDistance,g.inputOpening??Infinity),opening=Math.max(0,extension-.07),budget=opening*6,keys=[];let length=g.cutLength,index=g.index;
   while(index<g.plan.order.length&&keys.length<12){const e=g.plan.order[index];if(length+e.length>budget)break;keys.push(e.key);length+=e.length;index++;}
-  if(keys.length<(MOBILE?2:3)&&index<g.plan.order.length)return;
+  if(keys.length<2&&index<g.plan.order.length)return;
   if(keys.length){this.cutEdges(keys,V.norm(axis),g.plan.sides);g.index=index;g.cutLength=length;g.cutClock=0;}
  }
  projectTear(g,dt=1/120){
@@ -734,16 +735,10 @@ class PaperBag {
   if(this.control?.pulseTime){this.control.pulseTime-=dt;if(this.control.pulseTime<=0)this.release();}
  }
  settle(dt){
-  if(this.sleeping&&!this.control&&this.fries.sleeping){this.accumulator=0;return false;}
-  // The dense desktop mesh needs a fixed 120 Hz solve to stay upright and
-  // reach sleep. Retain fractional time, but never catch up more than 50 ms.
-  // Keep the lighter mobile solver's existing budget of at most three steps.
+  if(this.sleeping&&!this.control&&this.fries.sleeping)return false;
+  // The shared lightweight shell uses the phone's bounded two/three-step solve.
   const span=clamp(Number.isFinite(dt)?dt:1/60,0,.05);if(!span)return false;
-  let steps=Math.max(2,Math.ceil(span/(1/60))),h=span/steps;
-  if(!MOBILE){
-   h=1/120;this.accumulator+=span;steps=Math.min(6,Math.floor((this.accumulator+1e-12)/h));
-   this.accumulator=Math.max(0,this.accumulator-steps*h);if(!steps)return false;
-  }
+  const steps=Math.max(2,Math.ceil(span/(1/60))),h=span/steps;
   for(let i=0;i<steps;i++){if(this.sleeping&&!this.control){this.prev.set(this.pos);this.fries.step(h,this);}else this.step(h);}
   this.simulatedTime=(this.simulatedTime||0)+steps*h;this.rebuild();return true;
  }
@@ -752,7 +747,7 @@ class PaperBag {
  restore(s){
   if(s.topology){const t=s.topology;this.count=s.p.length/3;this.pos=new Float32Array(s.p);this.prev=new Float32Array(s.p);this.velocity=new Float32Array(s.p.length);this.rest=new Float32Array(t.rest);this.tri=new Uint16Array(t.tri);this.uv=new Float32Array(t.uv);this.wall=new Uint8Array(t.wall);this.origin=new Uint16Array(t.origin);this.broken=new Set(t.broken);this.refreshTopology();}
   else{this.pos.set(s.p);this.prev.set(s.p);this.velocity.fill(0);}
-  this.angles.set(s.angles);if(s.fries)this.fries.restore(s.fries);this.control=null;this.accumulator=0;this.tearEnergy=0;this.wake();this.rebuild();
+  this.angles.set(s.angles);if(s.fries)this.fries.restore(s.fries);this.control=null;this.tearEnergy=0;this.wake();this.rebuild();
  }
  resetShape(){this.restore(this.tearingEnabled?this.pristine:{p:this.rest,angles:this.elasticAngles,fries:this.fries.initial});}
  gesture(hit,snapshot){
@@ -859,7 +854,7 @@ function physicsWorkerMain(){
 }
 function physicsWorkerSource(){
  const vectors='const V={'+Object.entries(V).map(([key,fn])=>key+':'+fn.toString()).join(',')+'};';
- return '"use strict";const MOBILE='+MOBILE+',TEAR_MODE='+TEAR_MODE+',QUALITY='+JSON.stringify(QUALITY)+';const WIDTH='+WIDTH+',HEIGHT='+HEIGHT+',DEPTH='+DEPTH+',NX='+NX+',NZ='+NZ+',NY='+NY+',RING='+RING+',PERIM='+PERIM+',FLOOR='+FLOOR+';'+vectors+'const clamp='+clamp.toString()+',mix='+mix.toString()+',smooth='+smooth.toString()+',wrapAngle='+wrapAngle.toString()+';'+seeded.toString()+PaperContact.toString()+Fries.toString()+PaperBag.toString()+'('+physicsWorkerMain.toString()+')();';
+ return '"use strict";const TEAR_MODE='+TEAR_MODE+',QUALITY='+JSON.stringify(QUALITY)+';const WIDTH='+WIDTH+',HEIGHT='+HEIGHT+',DEPTH='+DEPTH+',NX='+NX+',NZ='+NZ+',NY='+NY+',RING='+RING+',PERIM='+PERIM+',FLOOR='+FLOOR+';'+vectors+'const clamp='+clamp.toString()+',mix='+mix.toString()+',smooth='+smooth.toString()+',wrapAngle='+wrapAngle.toString()+';'+seeded.toString()+PaperContact.toString()+Fries.toString()+PaperBag.toString()+'('+physicsWorkerMain.toString()+')();';
 }
 function controlData(g){const full={...g};for(const key of ['snapshot','screen','planeNormal','pointerIds','offset'])delete full[key];return full;}
 class PhysicsRunner{
@@ -909,7 +904,7 @@ class PhysicsRunner{
 
 // One generated UV atlas: paper fibres, uneven ink and a reference-inspired print.
 function makePaperTexture(){
- const canvas=document.createElement('canvas');canvas.width=MOBILE?1024:2048;canvas.height=MOBILE?768:1536;
+ const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=768;
  const c=canvas.getContext('2d',{alpha:false}),w=canvas.width,h=canvas.height,rand=seeded(22041);
  c.fillStyle='#b9a898';c.fillRect(0,0,w,h);
  const sideBounds=[0,WIDTH/PERIM,(WIDTH+DEPTH)/PERIM,(2*WIDTH+DEPTH)/PERIM,1];
@@ -979,14 +974,11 @@ float noise(vec2 p){vec2 a=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(ha
 void main(){
  vec2 uv=vec2(fract(vUV.x),vUV.y);vec3 tex=texture(uPaper,uv).rgb;
  vec3 N=normalize(vNormal);if(!gl_FrontFacing)N=-N;
- // Microscopic fibre relief follows material-space coordinates during deformation.
- ${MOBILE?'':`float h=.00017*noise(uv*vec2(2400.,1300.))+.00025*noise(uv*vec2(570.,320.));
- vec3 dx=dFdx(vWorld),dy=dFdy(vWorld),r1=cross(dy,N),r2=cross(N,dx);float det=dot(dx,r1);
- N=normalize(abs(det)*N-sign(det)*(dFdx(h)*r1+dFdy(h)*r2));`}
+ // Paper fibres come from the lightweight material-space texture.
  float key=max(dot(N,normalize(vec3(-3.,7.,5.))),0.),fill=max(dot(N,normalize(vec3(5.,3.,-4.))),0.);
  float sh=shadow(vShadow,N,.0015),light=.69+.105*N.y+.25*key*(1.-sh*.79)+.12*fill;
  vec3 V=normalize(uCamera-vWorld);float sheen=pow(1.-max(dot(N,V),0.),4.)*.026;
- if(!gl_FrontFacing){float grain=${MOBILE?'tex.r':'noise(uv*vec2(1400.,820.))'};tex=vec3(.66,.57,.485)*( .967+grain*.065);light*=.59+.26*smoothstep(.05,1.,vUV.y);}
+ if(!gl_FrontFacing){float grain=tex.r;tex=vec3(.66,.57,.485)*( .967+grain*.065);light*=.59+.26*smoothstep(.05,1.,vUV.y);}
  light*=.86+.14*smoothstep(0.,.22,vWorld.y);
  vec3 rgb=tex*light+vec3(sheen);
  float lip=smoothstep(.9975,1.001,vUV.y);rgb+=lip*vec3(.055,.041,.026);
@@ -1049,7 +1041,7 @@ class Mesh {
 class Stage {
  constructor(canvas,bag){
   this.canvas=canvas;this.bag=bag;
-  const gl=canvas.getContext('webgl2',{alpha:false,antialias:true,preserveDrawingBuffer:false,powerPreference:MOBILE?'default':'high-performance'});
+  const gl=canvas.getContext('webgl2',{alpha:false,antialias:true,preserveDrawingBuffer:false,powerPreference:'default'});
   if(!gl)throw new Error('Для объёмного пакета нужен WebGL 2. Откройте HTML в браузере с аппаратным ускорением, а не в просмотрщике файлов.');
   this.gl=gl;this.main=compile(gl,VERT,PAPER_FRAG);this.friesProgram=compile(gl,VERT,FRIES_FRAG);this.friesAOProgram=compile(gl,VERT,FRIES_AO_FRAG);this.floorProgram=compile(gl,VERT,FLOOR_FRAG);this.depth=compile(gl,DEPTH_VERT,DEPTH_FRAG);this.locations=new Map();
   this.mesh=new Mesh(gl,bag.data);this.friesMesh=new Mesh(gl,bag.fries.rebuild());this.friesAO=new Mesh(gl,bag.fries.shadows());this.yaw=.43;this.pitch=.35;this.distance=8.2;this.zoomFactor=1;this.target=[0,HEIGHT*.485,0];
@@ -1065,8 +1057,8 @@ class Stage {
   this.shadowDirty=true;this.dirty=true;this.resize();
  }
  uniform(p,name){let cache=this.locations.get(p);if(!cache){cache={};this.locations.set(p,cache);}if(!(name in cache))cache[name]=this.gl.getUniformLocation(p,name);return cache[name];}
- resize(){this.width=innerWidth;this.height=innerHeight;const dpr=Math.min(devicePixelRatio||1,this.pixelRatio||QUALITY.dpr,Math.sqrt((MOBILE?800000:2400000)/(this.width*this.height)));this.canvas.width=Math.round(this.width*dpr);this.canvas.height=Math.round(this.height*dpr);this.cameraUpdate();}
- frameBudget(dt){if(!MOBILE||dt>.1||!this.dirty)return;this.frameAverage=(this.frameAverage||1/60)*.94+dt*.06;this.slowFrames=this.frameAverage>.024?(this.slowFrames||0)+1:0;if(this.slowFrames>45&&(this.pixelRatio||QUALITY.dpr)>.95){this.pixelRatio=Math.max(.9,(this.pixelRatio||QUALITY.dpr)-.15);this.slowFrames=0;this.resize();}}
+ resize(){this.width=innerWidth;this.height=innerHeight;const dpr=Math.min(devicePixelRatio||1,this.pixelRatio||QUALITY.dpr,Math.sqrt(800000/(this.width*this.height)));this.canvas.width=Math.round(this.width*dpr);this.canvas.height=Math.round(this.height*dpr);this.cameraUpdate();}
+ frameBudget(dt){if(dt>.1||!this.dirty)return;this.frameAverage=(this.frameAverage||1/60)*.94+dt*.06;this.slowFrames=this.frameAverage>.024?(this.slowFrames||0)+1:0;if(this.slowFrames>45&&(this.pixelRatio||QUALITY.dpr)>.95){this.pixelRatio=Math.max(.9,(this.pixelRatio||QUALITY.dpr)-.15);this.slowFrames=0;this.resize();}}
  cameraUpdate(){
   const aspect=this.width/this.height,base=Math.max(8.2,(this.fitWidth||2.37)/(2*Math.tan(34*Math.PI/360)*aspect*.80),(this.fitHeight||3.35)/(2*Math.tan(34*Math.PI/360)*.76));this.actualDistance=base*this.zoomFactor;
   const d=this.actualDistance,c=Math.cos(this.pitch);this.eye=V.add(this.target,[Math.sin(this.yaw)*c*d,Math.sin(this.pitch)*d,Math.cos(this.yaw)*c*d]);
@@ -1089,7 +1081,7 @@ class Stage {
  common(program,vp){const gl=this.gl;gl.useProgram(program);gl.uniformMatrix4fv(this.uniform(program,'uVP'),false,vp);if(program!==this.depth){gl.uniformMatrix4fv(this.uniform(program,'uLightVP'),false,this.lightVP);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.shadowTexture);gl.uniform1i(this.uniform(program,'uShadow'),0);}}
  render(){
   const gl=this.gl;
-  const now=performance.now();if(this.shadowDirty&&(!MOBILE||now-(this.lastShadow||0)>32)){gl.bindFramebuffer(gl.FRAMEBUFFER,this.shadowFBO);gl.viewport(0,0,this.shadowSize,this.shadowSize);gl.clear(gl.DEPTH_BUFFER_BIT);this.common(this.depth,this.lightVP);this.mesh.draw();this.friesMesh.draw();gl.bindFramebuffer(gl.FRAMEBUFFER,null);this.shadowDirty=false;this.lastShadow=now;}
+  const now=performance.now();if(this.shadowDirty&&now-(this.lastShadow||0)>32){gl.bindFramebuffer(gl.FRAMEBUFFER,this.shadowFBO);gl.viewport(0,0,this.shadowSize,this.shadowSize);gl.clear(gl.DEPTH_BUFFER_BIT);this.common(this.depth,this.lightVP);this.mesh.draw();this.friesMesh.draw();gl.bindFramebuffer(gl.FRAMEBUFFER,null);this.shadowDirty=false;this.lastShadow=now;}
   gl.viewport(0,0,this.canvas.width,this.canvas.height);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   this.common(this.floorProgram,this.vp);const center=this.bag.center();let minY=Infinity;for(let a=1;a<this.bag.pos.length;a+=3)minY=Math.min(minY,this.bag.pos[a]);gl.uniform3fv(this.uniform(this.floorProgram,'uContact'),[center[0],minY,center[2]]);this.floor.draw();
   this.common(this.friesAOProgram,this.vp);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);this.friesAO.draw();gl.depthMask(true);gl.disable(gl.BLEND);this.common(this.main,this.vp);
@@ -1208,7 +1200,7 @@ function paintChallenge(now=performance.now()){
  if(bits!==paintedMask||paintedWon!==challenge.won){const icons=$('fry-progress');for(let i=0;i<6;i++)icons.children[i]?.classList.toggle('landed',!!challenge.mask[i]);icons.setAttribute('aria-label','На полу '+challenge.landed+' из 6');$('challenge').classList.toggle('complete',challenge.won);$('challenge-label').textContent=challenge.won?'Готово · все шесть на полу':challenge.landed?'На полу '+challenge.landed+' из 6':'Высыпь все шесть на пол';if(challenge.won&&!paintedWon)toast('Все шесть на полу · '+time);paintedMask=bits;paintedWon=challenge.won;}
 }
 let bag,stage,physicsRunner;
-const HISTORY_LIMIT=MOBILE?10:30;
+const HISTORY_LIMIT=10;
 const HOLD_DELAY=540,HOLD_START=140;
 const app={mode:'idle',gesture:null,pointers:new Map(),multi:null,undo:[],redo:[],activeId:null,space:false,shift:false,frames:0,paused:false,grabSamples:[]};
 let toastTimer;
@@ -1342,7 +1334,7 @@ function init(){
  try{
   document.title='Пакет — шесть на пол';$('loading-note').textContent='сомни, схвати, высыпи';
   bag=new PaperBag();stage=new Stage($('scene'),bag);
-  if(MOBILE&&typeof Worker==='function'){try{physicsRunner=new PhysicsRunner(bag);}catch(_){bag.renderOnly=false;}}
+  if(typeof Worker==='function'){try{physicsRunner=new PhysicsRunner(bag);}catch(_){bag.renderOnly=false;}}
   const canvas=stage.canvas;
   canvas.addEventListener('pointerdown',onDown);canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerup',onUp);canvas.addEventListener('pointercancel',onUp);
   canvas.addEventListener('pointerleave',()=>{if(app.mode==='idle')cursor(0,0,'');});

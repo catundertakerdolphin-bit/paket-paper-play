@@ -1,12 +1,37 @@
 const assert=require('node:assert/strict'),{Worker}=require('node:worker_threads'),load=require('./runtime.cjs');
-const {PaperBag,PhysicsRunner,V}=load({mobile:true});let maxPending=0,pending=0;
-const fs=require('node:fs'),path=require('node:path');assert.equal(fs.readFileSync(path.join(__dirname,'../dist/physics-worker.js'),'utf8'),load({mobile:true}).physicsWorkerSource(),'The deployed same-origin worker must match the tested physics source');
+const desktop=load({mobile:false}),mobile=load({mobile:true});
+const {PaperBag,PhysicsRunner,V}=desktop;let maxPending=0,pending=0;
+const fs=require('node:fs'),path=require('node:path');assert.equal(desktop.physicsWorkerSource(),mobile.physicsWorkerSource(),'Desktop and phone must run identical worker physics');assert.equal(fs.readFileSync(path.join(__dirname,'../dist/physics-worker.js'),'utf8'),desktop.physicsWorkerSource(),'The deployed same-origin worker must match the tested physics source');
 function factory(source){
  const bridge={};const worker=new Worker("const {parentPort}=require('node:worker_threads');global.self={postMessage:(message,transfers)=>parentPort.postMessage(message,transfers)};parentPort.on('message',data=>self.onmessage({data}));"+source,{eval:true});
  worker.on('message',data=>{pending--;bridge.onmessage?.({data});});worker.on('error',error=>bridge.onerror?.(error));bridge.postMessage=message=>{pending++;maxPending=Math.max(maxPending,pending);worker.postMessage(message);};bridge.terminate=()=>worker.terminate();return bridge;
 }
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function assertStanding(b,initial,label){
+ let drift=0;for(let a=0;a<b.pos.length;a+=3)drift=Math.max(drift,Math.hypot(...[0,1,2].map(d=>b.pos[a+d]-initial.p[a+d])));
+ assert(drift<.08,label+' must keep the untouched paper upright');assert(b.sleeping,label+' must reach sleep');assert(b.fries.floorMask.every(x=>x===0),label+' must retain the fries');
+}
+async function standingWorker(){
+ let now=0;const b=new PaperBag(),initial=b.snapshot(),runner=new PhysicsRunner(b,factory,()=>now);
+ b.step=()=>{throw Error('The main thread must not solve the standing shell');};
+ async function reply(){const deadline=performance.now()+7000;while(runner.inflight){await sleep(2);assert(!runner.failed);assert(performance.now()<deadline,'Standing worker must reply');}}
+ try{
+  await reply();for(let frame=0;frame<40;frame++){now+=50;b.settle(.05);await reply();}
+  assert.equal(b.count,initial.p.length/3,'Worker startup must preserve the main-thread topology');assert.deepEqual([...b.tri],[...initial.topology.tri]);assertStanding(b,initial,'The actual desktop worker at 20 Hz');
+  console.log('STANDING WORKER CHECK PASSED: actual desktop worker, 20 Hz dispatch, matching topology, upright sleep');
+ }finally{runner.dispose();}
+}
+function failedWorker(){
+ const b=new PaperBag(),initial=b.snapshot(),original={settle:b.settle,restore:b.restore,release:b.release};let terminated=0;
+ const runner=new PhysicsRunner(b,()=>({postMessage(){},terminate(){terminated++;}}));
+ runner.receive({type:'error',message:'Simulated worker initialization failure'});
+ assert(runner.failed);assert.equal(terminated,1);assert.equal(b.renderOnly,false);for(const key of Object.keys(original))assert.equal(b[key],original[key],'Fallback must restore '+key);
+ for(let frame=0;frame<40;frame++)b.settle(.05);assertStanding(b,initial,'The synchronous desktop fallback');
+ b.resetShape();assert.deepEqual([...b.pos],[...initial.p]);assert.deepEqual([...b.tri],[...initial.topology.tri]);
+ console.log('FALLBACK CHECK PASSED: worker initialization error, restored synchronous methods, upright paper, reset');
+}
 (async()=>{
+ await standingWorker();failedWorker();
  const b=new PaperBag(true),initial=b.snapshot(),runner=new PhysicsRunner(b,factory);let beats=0,workerArea=1;const timer=setInterval(()=>beats++,5),receive=runner.receive;
  runner.receive=function(message){receive.call(this,message);if(message.type==='state'&&message.epoch===this.epoch){const pos=b.pos;try{b.pos=message.p;workerArea=b.metrics().areaRatio;}finally{b.pos=pos;}}};
  async function until(predicate,limit=7000){const start=performance.now();while(!predicate()){b.settle(1/60);await sleep(12);assert(!runner.failed,'The actual generated browser worker must run');if(performance.now()-start>limit)throw Error('Worker check timed out');}}
@@ -36,6 +61,6 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   // Restore while an old tear response is still in flight. Epoch filtering
   // must stop that response from resurrecting the torn topology.
   b.settle(1/60);assert(runner.inflight);b.release();b.restore(initial);assert.deepEqual([...b.fries.pos],[...initial.fries.p]);await until(()=>runner.commands.length===0&&!runner.inflight);assert.equal(b.count,717);assert.equal(b.broken.size,0);assert.deepEqual([...b.tri],[...initial.topology.tri]);assert(b.fries.pos.every(Number.isFinite));
-  console.log('WORKER CHECKS PASSED: actual worker source, mobile profile, responsive main thread, one in-flight job, repeated tear → crumple → tear, stale-response rejection and topology restore');
+  console.log('WORKER CHECKS PASSED: actual shared worker source, desktop main thread, responsive UI, one in-flight job, repeated tear → crumple → tear, stale-response rejection and topology restore');
  }finally{clearInterval(timer);runner.dispose();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

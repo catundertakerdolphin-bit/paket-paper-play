@@ -15,6 +15,6 @@ const assert=require('node:assert/strict'),setup=require('./ui-runtime.cjs');
  const {T,b,event,forceTear}=setup({mobile:false});T.onDown(event('pointerdown',{x:230,alt:true}));assert.equal(T.app.mode,'tear-ready');T.onMove(event('pointermove',{x:330,alt:true}));assert.equal(T.app.mode,'tear');forceTear();assert(b.broken.size>0);T.onUp(event('pointerup',{x:330,alt:true}));
 }
 for(const mobile of [true,false]){
- const {T,b}=setup({mobile}),limit=mobile?10:30;for(let i=0;i<45;i++){const before=b.snapshot();b.pos[0]+=.001;T.remember(before);assert(T.app.undo.length<=limit);}assert.equal(T.app.undo.length,limit);const end=new Float32Array(b.pos);for(let i=0;i<3;i++)T.undo();for(let i=0;i<3;i++)T.redo();assert.deepEqual([...b.pos],[...end]);
+ const {T,b}=setup({mobile}),limit=10;for(let i=0;i<45;i++){const before=b.snapshot();b.pos[0]+=.001;T.remember(before);assert(T.app.undo.length<=limit);}assert.equal(T.app.undo.length,limit);const end=new Float32Array(b.pos);for(let i=0;i<3;i++)T.undo();for(let i=0;i<3;i++)T.redo();assert.deepEqual([...b.pos],[...end]);
 }
 console.log('TEAR CONTROLS CHECKS PASSED: automatic two-finger tear, parallel / close / third-finger cases, one-step undo, cancellation, background camera, mouse Alt and bounded history');
