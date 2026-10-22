@@ -1,0 +1,13 @@
+{
+  "name": "paket-paper-play",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Пакет — шесть на пол. Интерактивный симулятор бумажного пакета.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build-worker.cjs",
+    "test": "node tests/controls.cjs && node tests/challenge.cjs && node tests/worker.cjs"
+  }
+}

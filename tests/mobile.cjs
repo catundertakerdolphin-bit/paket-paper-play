@@ -1,0 +1,9 @@
+const assert=require('node:assert/strict'),load=require('./runtime.cjs'),audit=require('./mesh-audit.cjs');const {PaperBag,V,QUALITY,MOBILE,TEAR_MODE}=load({mobile:true});
+assert(MOBILE&&TEAR_MODE);assert.equal(QUALITY.shadow,512);assert.equal(QUALITY.taps,4);assert.equal(QUALITY.dpr,1.25);
+const b=new PaperBag(),initial=b.snapshot();assert.equal(b.count,717);assert.equal(b.tri.length/3,1400);
+for(let f=0;f<90;f++)b.settle(1/60);assert(b.center()[1]>1.4);assert(Math.abs(b.metrics().areaRatio-1)<.006);
+const hit=b.raycast({o:[0,1.8,6],d:[0,0,-1]}),g=b.gesture(hit,b.snapshot());for(let f=0;f<120;f++){b.press(g,f*16.667);b.settle(1/60);}assert.equal(audit(b),0);assert(Math.abs(b.metrics().areaRatio-1)<.008);b.release();for(let f=0;f<45;f++)b.settle(1/60);assert.equal(audit(b),0);
+const high=b.raycast({o:[0,2.5,6],d:[0,0,-1]});if(high){const grab=b.gesture(high,b.snapshot());for(let f=0;f<120;f++){b.grab(grab,[Math.min(f/60,1)*.8,Math.min(f/60,1)*1.6,0]);b.settle(1/60);}assert(Math.min(...Array.from({length:b.count},(_,i)=>b.pos[i*3+1]))>.2);assert.equal(audit(b),0);b.release();for(let f=0;f<150;f++)b.settle(1/60);assert.equal(audit(b),0);assert(Math.min(...Array.from({length:b.count},(_,i)=>b.pos[i*3+1]))>=.0079);}
+console.log('MOBILE SHELL CHECKS PASSED:',JSON.stringify(b.metrics()));
+b.restore(initial);const L=b.raycast({o:[-.4,2,6],d:[0,0,-1]}),R=b.raycast({o:[.4,2,6],d:[0,0,-1]}),tear=b.beginTear(L,R,b.snapshot());b.moveTear(tear,0,V.add(L.p,[-1,.25,0]));b.moveTear(tear,1,V.add(R.p,[1,.25,0]));for(let f=0;f<90;f++)b.settle(1/60);assert.equal(b.pieces.length,2);assert.equal(audit(b),0);assert(Math.abs(b.metrics().areaRatio-1)<.01);b.release();for(let f=0;f<60;f++)b.settle(1/60);assert.equal(audit(b),0);b.resetShape();assert.equal(b.count,717);assert.equal(b.broken.size,0);
+console.log('MOBILE TEAR CHECKS PASSED: retained shell metric, collisions, lift/drop, evolving tears, fragment fall and reset');
